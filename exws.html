@@ -9,7 +9,22 @@
 <div id="wsdata"></div>
 
 <script>
+    //生成一个简单的 UUID（生产环境可以使用更健壮的 UUID 生成库）
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+    const uuid = generateUUID();
+
     const ws = new WebSocket('ws://localhost:8080/ws');
+
+    ws.onopen = function() {
+        // 连接建立后立即发送 UUID
+        ws.send(JSON.stringify(uuid));
+        console.log('Connected and sent UUID:', uuid);
+    };
 
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);

@@ -21,16 +21,21 @@ type Asset struct {
 	CanTransfer decimal.Decimal `json:"canTransfer"` // 可转余额：margin - 持仓金额
 }
 
+type Client struct {
+	Conn *websocket.Conn
+	UUID string
+}
+
 type ClientManager struct {
 	mutex      sync.Mutex
-	clients    map[*websocket.Conn]bool
+	clients    map[*websocket.Conn]Client
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
 	broadcast  chan Asset
 }
 
 var manager = ClientManager{
-	clients:    make(map[*websocket.Conn]bool),
+	clients:    make(map[*websocket.Conn]Client),
 	register:   make(chan *websocket.Conn),
 	unregister: make(chan *websocket.Conn),
 	broadcast:  make(chan Asset),
@@ -49,23 +54,25 @@ var upgrader = websocket.Upgrader{
 func (cm *ClientManager) start() {
 	for {
 		select {
-		case conn := <-cm.register:
-			manager.mutex.Lock()
-			cm.clients[conn] = true
-			manager.mutex.Unlock()
+		case <-cm.register:
+			// 这里只负责接收连接，UUID 已经在 handleConnections 中处理
 			log.Printf("New client connected. Total clients: %d", len(manager.clients))
+
 		case conn := <-cm.unregister:
 			manager.mutex.Lock()
-			if _, ok := manager.clients[conn]; ok {
+			if client, ok := manager.clients[conn]; ok {
+				log.Printf("Client with UUID %s disconnected", client.UUID)
 				delete(manager.clients, conn)
 				conn.Close()
 			}
+			manager.mutex.Unlock()
 			log.Printf("Client disconnected. Total clients: %d", len(manager.clients))
 		case asset := <-manager.broadcast:
 			manager.mutex.Lock()
-			for conn := range manager.clients {
-				if err := conn.WriteJSON(asset); err != nil {
-					log.Printf("write error: %v", err)
+			for conn, client := range manager.clients {
+				err := conn.WriteJSON(asset)
+				if err != nil {
+					log.Printf("write error to client %s: %v", client.UUID, err)
 					delete(manager.clients, conn)
 					conn.Close()
 				}
@@ -84,19 +91,25 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// 读取客户端发送的初始消息（UUID）
-	//var uuid string
-	//err = conn.ReadJSON(&uuid) // 假设客户端发送的是 JSON 格式的 UUID
-	//if err != nil {
-	//	log.Printf("error reading UUID: %v", err)
-	//	return // 如果读取失败，直接关闭连接
-	//}
+	var uuid string
+	err = conn.ReadJSON(&uuid) // 假设客户端发送的是 JSON 格式的 UUID
+	if err != nil {
+		log.Printf("error reading UUID: %v", err)
+		return // 如果读取失败，直接关闭连接
+	}
 
-	manager.register <- conn
+	// 将客户端信息存储到 manager 中
+	manager.mutex.Lock()
+	manager.clients[conn] = Client{Conn: conn, UUID: uuid}
+	manager.mutex.Unlock()
+
+	log.Printf("Client connected with UUID: %s", uuid)
 
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
 			manager.unregister <- conn
+			break
 		}
 	}
 }
