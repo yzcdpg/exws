@@ -50,7 +50,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// 逐循环：注册、注销、广播
+// 主循环：注册、注销、广播
 func (cm *ClientManager) start() {
 	for {
 		select {
