@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>exws</title>
+</head>
+<body>
+<h1>合约资产WS测试</h1>
+<div id="wsdata"></div>
+
+<script>
+    const ws = new WebSocket('ws://localhost:8080/ws');
+
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        const div = document.getElementById('wsdata');
+        div.innerHTML = `
+                余额: ${data.balance}<br>
+                未实现盈亏: ${data.pnl}<br>
+                可用保证金: ${data.margin}<br>
+                可转余额: ${data.canTransfer}
+            `;
+    };
+
+    ws.onclose = function() {
+        console.log('WebSocket connection closed');
+    };
+
+    ws.onerror = function(error) {
+        console.error('WebSocket error:', error);
+    };
+    </script>
+</body>
+</html>
